@@ -1,6 +1,6 @@
 # Cybersecurity Homelab — Wazuh SIEM/XDR with Attack Detection
 
-A fully functional cybersecurity homelab built to simulate real-world attack and defense scenarios. This lab demonstrates hands-on experience with SIEM deployment, endpoint monitoring, offensive security, automated incident response, and attack detection mapped to the MITRE ATT&CK framework.
+A fully functional cybersecurity homelab built to simulate real-world attack and defense scenarios. This lab demonstrates hands-on experience with SIEM deployment, endpoint monitoring, offensive security, automated incident response, network perimeter monitoring, and attack detection mapped to the MITRE ATT&CK framework.
 
 ---
 
@@ -30,7 +30,7 @@ This homelab replicates a small enterprise environment with a firewall, a SIEM s
                         Internet
                            |
                    FortiWifi 71G
-                (Firewall / Router)
+                (Firewall / Router / IPS)
                            |
                      10.1.1.x LAN
                            |
@@ -50,10 +50,13 @@ This homelab replicates a small enterprise environment with a firewall, a SIEM s
 - Configured static IP at `10.1.1.3` for reliable agent connectivity
 - Web dashboard accessible at `https://10.1.1.3`
 
-### 2. Network Infrastructure
-- FortiWifi 71G configured as network perimeter firewall and DHCP server
+### 2. Network Infrastructure & FortiWifi Integration
+- FortiWifi 71G configured as network perimeter firewall, DHCP server, and IPS
 - All VMs bridged to physical LAN on the `10.1.1.x` subnet
 - Two subnets in use: `10.1.1.x` (LAN/homelab) and `192.168.40.x` (WiFi management)
+- FortiWifi syslog forwarded to Wazuh on UDP port 514
+- Wazuh automatically parsing FortiGate logs using built-in `fortigate-firewall-v6` decoder
+- FortiWifi IPS configured to block port scanning attacks
 
 ### 3. Kali Linux Attacker VM
 - Imported pre-built Kali VMware image
@@ -138,12 +141,27 @@ echo "test" > /root/test
 
 ---
 
+### 5. Network Port Scan — FortiWifi IPS Detection & Blocking
+**Tool:** Nmap on Kali  
+**Command:**
+```bash
+nmap -sS -p 1-1000 8.8.8.8
+```
+**FortiWifi IPS Detections:**
+- Rule 81628 (level 11) — Fortigate attack detected (initial scan)
+- Rule 81629 (level 6) — Fortigate attack dropped (after IPS block configured)
+- Rule 81612 (level 3) — Fortigate firewall configuration change logged
+- **6 packets dropped by FortiWifi IPS in real time**
+- **Dual-layer detection** — same attack caught by both Wazuh endpoint agent and FortiWifi IPS
+
+---
+
 ## Wazuh Features Configured & Demonstrated
 
 ### Security Events & Alerting
 - Real time security event monitoring across all agents
 - 90+ events captured during attack simulation sessions
-- Alert severity levels from informational (3) to critical (10)
+- Alert severity levels from informational (3) to critical (11)
 
 ### MITRE ATT&CK Mapping
 Wazuh automatically mapped detected activity to the following tactics:
@@ -173,6 +191,19 @@ Wazuh automatically mapped detected activity to the following tactics:
 - 180 second block timeout with automatic unblock
 - Complete attack → detect → respond cycle demonstrated end to end
 
+### Network Perimeter Monitoring (FortiWifi Syslog)
+- FortiWifi 71G syslog forwarded to Wazuh on UDP port 514
+- Wazuh automatically parsing logs using built-in `fortigate-firewall-v6` decoder
+- Every firewall connection logged with full application layer details
+- FortiWifi IPS configured to block Port.Scanning attacks
+- Firewall configuration changes automatically logged by Wazuh
+- Compliance frameworks auto-mapped: PCI DSS, GDPR, HIPAA, NIST-800-53
+
+### Compliance Monitoring (CIS Benchmarks)
+- Wazuh automatically ran CIS benchmark scans against all agents
+- Kali Linux: 45% score against CIS Distribution Independent Linux Benchmark v2.0.0
+- 190 total checks run automatically with pass/fail/not applicable results
+
 ---
 
 ## Key Challenges & Solutions
@@ -187,6 +218,7 @@ Wazuh automatically mapped detected activity to the following tactics:
 | SSH key algorithm mismatch with Metasploitable | Used legacy KexAlgorithms, HostKeyAlgorithms, and MACs flags |
 | FIM not showing results | Manually triggered scan with `agent_control -r -u 002` on Wazuh server |
 | Vulnerability detection tag deprecated | Updated from `vulnerability-detector` to `vulnerability-detection` |
+| FortiWifi IPS detecting but not blocking | Switched firewall policy from `all_default_pass` to blocking IPS profile |
 
 ---
 
@@ -195,6 +227,16 @@ Wazuh automatically mapped detected activity to the following tactics:
 - [Wazuh Server Installation](setup/wazuh-install.md)
 - [Kali Linux Agent Setup](setup/kali-setup.md)
 - [Metasploitable 2 Agent Setup](setup/metasploitable-setup.md)
+- [FortiWifi Syslog Integration](setup/fortiwifi-syslog-integration.md)
+
+---
+
+## Attack Documentation
+
+- [SSH Brute Force](attacks/ssh-brute-force.md)
+- [Network Reconnaissance (Nmap)](attacks/nmap-reconnaissance.md)
+- [Metasploit vsftpd Backdoor Exploit](attacks/metasploit-vsftpd.md)
+- [File Integrity Monitoring](attacks/file-integrity-monitoring.md)
 
 ---
 
@@ -203,10 +245,13 @@ Wazuh automatically mapped detected activity to the following tactics:
 - SIEM deployment and configuration (Wazuh)
 - Endpoint agent installation and management
 - Network architecture with enterprise firewall (FortiWifi)
+- Firewall syslog integration and log parsing
+- Intrusion Prevention System (IPS) configuration
 - Offensive security — reconnaissance, exploitation, post-exploitation
-- Defensive security — alert tuning, FIM, active response
+- Defensive security — alert tuning, FIM, active response, IPS blocking
 - MITRE ATT&CK framework mapping
 - Automated incident response
+- Compliance monitoring (CIS, PCI DSS, GDPR, HIPAA, NIST-800-53)
 - Linux system administration (Ubuntu, Kali, legacy Ubuntu 8.04)
 - Legacy system troubleshooting and compatibility
 - Virtualization with VMware Workstation Pro
@@ -216,6 +261,7 @@ Wazuh automatically mapped detected activity to the following tactics:
 ## Future Improvements
 
 - [x] FortiWifi syslog forwarding to Wazuh for firewall event monitoring
+- [x] FortiWifi IPS blocking of detected attacks
 - [ ] Custom Wazuh detection rules targeting Meterpreter sessions
 - [ ] Email or Slack alerts for critical severity events
 - [ ] Add Windows VM as additional monitored endpoint
