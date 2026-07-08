@@ -74,7 +74,7 @@ This homelab replicates a small enterprise environment with a firewall, a SIEM s
 **Tool:** SSH loop from Kali  
 **Command:**
 ```bash
-for i in {1..20}; do ssh wronguser@10.1.1.5; done
+for i in {1..20}; do ssh -o "KexAlgorithms=diffie-hellman-group1-sha1" -o "HostKeyAlgorithms=ssh-rsa" -o "MACs=hmac-sha1" wronguser@10.1.1.5; done
 ```
 **Wazuh Detections:**
 - Rule 5710 (level 5) — SSH attempt using non-existent user
@@ -164,7 +164,7 @@ Wazuh automatically mapped detected activity to the following tactics:
 
 ### Vulnerability Detection
 - Enabled Wazuh vulnerability scanner on the manager
-- CVEs detected on Kali Linux agent
+- CVEs detected on Kali Linux agent — Metasploitable agent incompatible due to legacy kernel 2.6.24
 - Scanner running on 60 minute feed update interval
 
 ### Active Response
@@ -179,7 +179,7 @@ Wazuh automatically mapped detected activity to the following tactics:
 
 | Challenge | Solution |
 |---|---|
-| Wazuh install failing mid-way | Expanded VM disk to 50GB, fully cleaned broken install, reinstalled |
+| Wazuh install failing mid-way | Expanded VM disk to 100GB, fully cleaned broken install, reinstalled |
 | Metasploitable SSL error on agent download | Used HTTP instead of HTTPS for legacy OS compatibility |
 | Metasploitable architecture mismatch (amd64) | Downloaded i386 package for 32-bit system |
 | Wazuh 4.14 agent failing on kernel 2.6.24 | Downgraded to Wazuh 4.3.0 for legacy kernel compatibility |
