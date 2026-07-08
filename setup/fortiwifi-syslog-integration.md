@@ -1,6 +1,6 @@
 # FortiWifi 71G Syslog Integration with Wazuh
 
-This guide documents the steps taken to integrate FortiWifi 71G firewall logs with Wazuh, enabling network perimeter monitoring alongside endpoint monitoring.
+This guide documents the steps taken to integrate FortiWifi 71G firewall logs with Wazuh, enabling network perimeter monitoring alongside endpoint monitoring, including IPS blocking configuration.
 
 ---
 
@@ -25,7 +25,9 @@ By forwarding syslog from the FortiWifi 71G to Wazuh, the SIEM now monitors thre
 
 ---
 
-## Step 1 — Configure FortiWifi Syslog
+## Part 1 — Syslog Integration
+
+### Step 1 — Configure FortiWifi Syslog
 
 1. Log into the FortiWifi dashboard at `192.168.40.x`
 2. Go to **Log & Report → Log Settings → Global Settings**
@@ -37,7 +39,7 @@ By forwarding syslog from the FortiWifi 71G to Wazuh, the SIEM now monitors thre
 
 ---
 
-## Step 2 — Open Firewall Port on Wazuh Server
+### Step 2 — Open Firewall Port on Wazuh Server
 
 ```bash
 sudo ufw allow 514/udp
@@ -46,7 +48,7 @@ sudo ufw reload
 
 ---
 
-## Step 3 — Configure Wazuh to Receive Syslog
+### Step 3 — Configure Wazuh to Receive Syslog
 
 Edit the Wazuh manager config:
 
@@ -73,7 +75,7 @@ sudo systemctl restart wazuh-manager
 
 ---
 
-## Step 4 — Verify Wazuh is Listening
+### Step 4 — Verify Wazuh is Listening
 
 ```bash
 sudo ss -ulnp | grep 514
@@ -86,7 +88,7 @@ UNCONN 0    0    0.0.0.0:514    0.0.0.0:*    users:(("wazuh-remoted",pid=XXXX,fd
 
 ---
 
-## Step 5 — Verify Logs Are Arriving
+### Step 5 — Verify Logs Are Arriving
 
 ```bash
 sudo tcpdump -i any port 514 -n
@@ -109,11 +111,49 @@ No manual decoder configuration was required — Wazuh ships with native FortiGa
 
 ---
 
-## FortiWifi Events Detected
+## Part 2 — IPS Blocking Configuration
+
+After confirming syslog integration was working, the FortiWifi IPS was configured to actively block port scanning attacks rather than just detect them.
+
+### Step 1 — Edit the IPS Sensor
+
+1. In the FortiWifi dashboard go to **Security Profiles → Intrusion Prevention**
+2. Click **Edit** on the IPS profile applied to your firewall policy (`all_default_pass`)
+3. Under **IPS Signatures and Filters** click **+ Create New**
+4. Set the following:
+   - **Type:** Signature
+   - **Signature:** Port.Scanning
+   - **Action:** Block
+   - **Packet Logging:** Enable
+   - **Status:** Enable
+5. Click **OK**
+
+---
+
+### Step 2 — Apply the IPS Profile to the Firewall Policy
+
+1. Go to **Policy & Objects → Firewall Policy**
+2. Click **Edit** on the **Wifi** policy
+3. Change the **IPS Sensor** to the profile containing your Port.Scanning block rule
+4. Click **OK**
+
+---
+
+### Step 3 — Test the Block
+
+Run an nmap scan from Kali against an external target:
+
+```bash
+nmap -sS -p 1-1000 8.8.8.8
+```
+
+---
+
+## FortiWifi Events Detected & Blocked
 
 ### 1. Normal Traffic Monitoring
 **Rule 81633 — Fortigate: App passed by firewall**
-- Every allowed connection is logged with full details
+- Every allowed connection logged with full details
 - Source IP, destination IP, destination country, application name, bytes transferred
 - Compliance mapped to PCI DSS, GDPR, HIPAA, NIST-800-53
 
@@ -141,7 +181,7 @@ action: accept
 ### 3. IPS Attack Detection (level 11)
 **Rule 81628 — Fortigate attack detected**
 
-An nmap port scan from Kali Linux (`10.1.1.8`) against an external target was detected by the FortiWifi IPS engine and forwarded to Wazuh:
+Initial nmap port scan from Kali Linux (`10.1.1.8`) was detected by the FortiWifi IPS:
 
 ```
 attack: Port.Scanning
@@ -151,12 +191,33 @@ direction: outgoing
 action: detected
 severity: low
 attackid: 43814
-ref: http://www.fortinet.com/ids/VID43814
 ```
 
-**This demonstrates dual-layer detection** — the same Kali attack was detected by:
-- The **Wazuh endpoint agent** on Kali at the host level
-- The **FortiWifi IPS** at the network perimeter level
+---
+
+### 4. IPS Attack Blocked (level 6)
+**Rule 81629 — Fortigate attack dropped**
+
+After configuring the Port.Scanning block rule, subsequent nmap scans were actively dropped by the FortiWifi IPS:
+
+```
+attack: Port.Scanning
+srcip: 10.1.1.8 (Kali Linux)
+dstip: 8.8.8.8
+direction: outgoing
+action: dropped
+```
+
+- 6 packets dropped in a single scan attempt
+- FortiWifi Intrusion Prevention dashboard confirmed **Dropped** status
+- Wazuh received and alerted on every dropped packet in real time
+
+---
+
+### 5. Firewall Configuration Change Logging
+**Rule 81612 — Fortigate: Firewall configuration changes (level 3)**
+
+Wazuh automatically logged the IPS policy change made in the FortiWifi dashboard — demonstrating that even administrative changes to the firewall are tracked by the SIEM.
 
 ---
 
@@ -173,8 +234,6 @@ Or filter by rule level:
 - Field: `rule.level`
 - Operator: `is greater than`
 - Value: `3`
-
-This suppresses informational traffic logs while preserving high severity alerts like IPS detections.
 
 ---
 
@@ -196,11 +255,13 @@ FortiWifi alerts are automatically mapped to multiple compliance frameworks by W
 - `fortigate-syslog-integration.png` — Dashboard showing FortiGate events confirming integration
 - `fortigate-high-traffic.png` — Multiple high traffic events from same source
 - `fortigate-compliance-mapping.png` — Compliance framework mapping on FortiGate alert
-- `fortigate-attack-detected-detail.png` — Full alert detail of FortiWifi IPS detection
-- `fortigate-attack-detected-dashboard.png` — FortiWifi IPS detecting Kali port scan (rule 81628, level 11)
+- `fortigate-attack-detected-1.png` — FortiWifi IPS detecting Kali port scan (rule 81628, level 11)
+- `fortigate-attack-detected-2.png` — Full alert detail of FortiWifi IPS detection
+- `fortigate-attack-dropped-dashboard.png` — FortiWifi IPS dashboard showing Port.Scanning dropped
+- `fortigate-attack-dropped-wazuh.png` — Wazuh alerts showing Fortigate attack dropped (rule 81629)
 
 ---
 
 ## Result
 
-The FortiWifi 71G is now fully integrated with Wazuh, providing complete network perimeter visibility. Every connection passing through the firewall is logged, parsed, and correlated with endpoint events — replicating an enterprise-grade defense in depth monitoring architecture.
+The FortiWifi 71G is fully integrated with Wazuh providing complete network perimeter visibility. The IPS is configured to actively block port scanning attacks — not just detect them. Every connection, attack detection, blocked packet, and even firewall configuration change is logged, parsed, and alerted on by Wazuh — replicating an enterprise-grade defense in depth monitoring and prevention architecture.
