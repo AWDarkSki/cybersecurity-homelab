@@ -215,7 +215,7 @@ Wazuh automatically mapped detected activity to the following tactics:
 
 ## Future Improvements
 
-- [ ] FortiWifi syslog forwarding to Wazuh for firewall event monitoring
+- [x] FortiWifi syslog forwarding to Wazuh for firewall event monitoring
 - [ ] Custom Wazuh detection rules targeting Meterpreter sessions
 - [ ] Email or Slack alerts for critical severity events
 - [ ] Add Windows VM as additional monitored endpoint
